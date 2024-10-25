@@ -4,6 +4,26 @@ import * as glob from '@actions/glob'
 import * as path from 'path'
 import * as stream from 'stream'
 import * as util from 'util'
+import pLimit from 'p-limit'
+
+// This limit is a bit empiric.
+
+/**
+ * This concurrency setting is a bit empiric.
+ * Below some results on my M1 (tested on >150k samll files):
+ *  | concurrency | difference |
+ *  | ----------- | ---------- |
+ *  |           1 |        16% |
+ *  |           2 |        45% |
+ *  |           3 |        55% |
+ *  |           5 |        58% |
+ *  |          10 |        60% |
+ *  |          20 |        60% |
+ *
+ * Anything above ~10 doesn't seem to yield any significant improvement
+ */
+
+const limit = pLimit(10)
 
 async function run(): Promise<void> {
   // arg0 -> node
@@ -18,34 +38,44 @@ async function run(): Promise<void> {
   }
 
   console.log(`Match Pattern: ${matchPatterns}`)
-  let hasMatch = false
   const githubWorkspace = process.cwd()
   const result = crypto.createHash('sha256')
-  let count = 0
   const globber = await glob.create(matchPatterns, {followSymbolicLinks})
+  const pipeline = util.promisify(stream.pipeline)
+  let filePromises = []
+
   for await (const file of globber.globGenerator()) {
-    console.log(file)
-    if (!file.startsWith(`${githubWorkspace}${path.sep}`)) {
-      console.log(`Ignore '${file}' since it is not under GITHUB_WORKSPACE.`)
-      continue
-    }
-    if (fs.statSync(file).isDirectory()) {
-      console.log(`Skip directory '${file}'.`)
-      continue
-    }
-    const hash = crypto.createHash('sha256')
-    const pipeline = util.promisify(stream.pipeline)
-    await pipeline(fs.createReadStream(file), hash)
-    result.write(hash.digest())
-    count++
-    if (!hasMatch) {
-      hasMatch = true
-    }
+    filePromises.push(
+      limit(async () => {
+        console.log(file)
+        if (!file.startsWith(`${githubWorkspace}${path.sep}`)) {
+          console.log(
+            `Ignore '${file}' since it is not under GITHUB_WORKSPACE.`
+          )
+          return
+        }
+        if (fs.statSync(file).isDirectory()) {
+          console.log(`Skip directory '${file}'.`)
+          return
+        }
+
+        const hash = crypto.createHash('sha256')
+        await pipeline(fs.createReadStream(file), hash)
+        return hash.digest()
+      })
+    )
   }
+
+  const executedFilePromises = (await Promise.all(filePromises)).filter(Boolean)
+
+  executedFilePromises.forEach(digest => {
+    result.write(digest)
+  })
+
   result.end()
 
-  if (hasMatch) {
-    console.log(`Found ${count} files to hash.`)
+  if (executedFilePromises.length) {
+    console.log(`Found ${executedFilePromises.length} files to hash.`)
     console.error(`__OUTPUT__${result.digest('hex')}__OUTPUT__`)
   } else {
     console.error(`__OUTPUT____OUTPUT__`)

@@ -10,8 +10,8 @@
     "lint": "eslint src/**/*.ts",
     "pack": "ncc build -o ../../layoutbin/hashFiles",
     "all": "npm run format && npm run lint && npm run build && npm run pack",
-    "prepare": "cd ../../../../ && husky install"
-
+    "prepare": "cd ../../../../ && husky install",
+    "test": "tsx --test"
   },
   "repository": {
     "type": "git",
@@ -33,7 +33,8 @@
   "author": "GitHub Actions",
   "license": "MIT",
   "dependencies": {
-    "@actions/glob": "^0.4.0"
+    "@actions/glob": "^0.4.0",
+    "p-limit": "^6.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.6.2",
@@ -43,9 +44,10 @@
     "eslint": "^8.47.0",
     "eslint-plugin-github": "^4.10.0",
     "eslint-plugin-prettier": "^5.0.0",
-    "prettier": "^3.0.3",
-    "typescript": "^5.2.2",
     "husky": "^8.0.3",
-    "lint-staged": "^14.0.0"
+    "lint-staged": "^14.0.0",
+    "prettier": "^3.0.3",
+    "tsx": "^4.19.1",
+    "typescript": "^5.2.2"
   }
 }
